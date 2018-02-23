@@ -3,7 +3,6 @@ import zmq
 import psycopg2 as pg
 from common.config import Config
 from common.activity_history import ActivityHistory, InvalidActivityException
-from load_balancer import LoadBalancer
 
 
 class HistoryStorage:
@@ -58,19 +57,16 @@ class HistoryStorage:
                                        password = self.config.password)
         self.zmq_context = zmq.Context.instance()
         self.zmq_in = self.zmq_context.socket(zmq.PULL)
-        self.balancer = LoadBalancer()
-
-    # TODO Is that the destructor?
-    def __del__(self):
-        self.zmq_context.destroy()
+        self.zmq_out = self.zmq_context.socket(zmq.PUB)
 
     def poll(self):
         self.zmq_in.bind("tcp://localhost:8001")
+        self.zmq_out.bind("tcp://*:8001")
         try:
             while True:
                 activity = self.zmq_in.recv_json()
                 if self.history.is_activity_new(activity):
                     self.history.insert_activity(activity)
-                    self.balancer.new_activity(activity)
+                    self.zmq_out.send_json(activity)
         except KeyboardInterrupt:
             pass
